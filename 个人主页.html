@@ -472,12 +472,17 @@
                     </div>
                     <div class="player-controls">
                         <button class="control-btn">⏮</button>
+                        <button class="control-btn" id="importBtn" title="Import local audio">🎵</button>
                         <button class="control-btn play-btn" id="playBtn">▶</button>
                         <button class="control-btn">⏭</button>
                     </div>
                     <div class="progress-bar" id="progressBar">
                         <div class="progress" id="progress"></div>
                     </div>
+                    <!-- 隐藏的文件输入，用于导入本地音频 -->
+                    <input type="file" id="playerFileInput" accept="audio/*" style="display:none">
+                    <!-- 隐藏的 audio 元素（仅用于播放，不改变页面布局） -->
+                    <audio id="audioPlayer"></audio>
                 </div>
 
                 <div class="interactive-area" id="interactiveArea">
@@ -592,38 +597,81 @@
             });
         });
 
-        // 音乐播放器
+        // 音乐播放器（真实播放）
         const playBtn = document.getElementById('playBtn');
         const progressBar = document.getElementById('progressBar');
         const progress = document.getElementById('progress');
-        let isPlaying = false;
-        let progressWidth = 35;
+        const audio = document.getElementById('audioPlayer');
+        const importBtn = document.getElementById('importBtn');
+        const playerFileInput = document.getElementById('playerFileInput');
 
+        // 播放/暂停
         playBtn.addEventListener('click', () => {
-            isPlaying = !isPlaying;
-            playBtn.textContent = isPlaying ? '⏸' : '▶';
-            
-            if (isPlaying) {
-                simulatePlayback();
-            }
+            if (!audio.src) return; // 未加载音轨
+            if (audio.paused) audio.play(); else audio.pause();
         });
 
-        function simulatePlayback() {
-            if (isPlaying && progressWidth < 100) {
-                progressWidth += 0.5;
-                progress.style.width = progressWidth + '%';
-                setTimeout(simulatePlayback, 100);
-            } else if (progressWidth >= 100) {
-                progressWidth = 0;
-                if (isPlaying) simulatePlayback();
-            }
-        }
+        audio.addEventListener('play', () => playBtn.textContent = '⏸');
+        audio.addEventListener('pause', () => playBtn.textContent = '▶');
+        audio.addEventListener('ended', () => playBtn.textContent = '▶');
 
+        // 更新进度条
+        audio.addEventListener('timeupdate', () => {
+            if (!audio.duration) return;
+            const pct = (audio.currentTime / audio.duration) * 100;
+            progress.style.width = pct + '%';
+        });
+
+        // 点击进度条跳转
         progressBar.addEventListener('click', (e) => {
+            if (!audio.duration) return;
             const rect = progressBar.getBoundingClientRect();
             const x = e.clientX - rect.left;
-            progressWidth = (x / rect.width) * 100;
-            progress.style.width = progressWidth + '%';
+            const newTime = (x / rect.width) * audio.duration;
+            audio.currentTime = newTime;
+        });
+
+        // 导入本地音频
+        if (importBtn && playerFileInput) {
+            importBtn.addEventListener('click', () => playerFileInput.click());
+            playerFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const objectUrl = URL.createObjectURL(file);
+                audio.src = objectUrl;
+                audio.load();
+                audio.play().catch(() => {});
+                // 更新显示信息
+                const titleEl = document.querySelector('.song-title');
+                const artistEl = document.querySelector('.song-artist');
+                if (titleEl) titleEl.textContent = file.name;
+                if (artistEl) artistEl.textContent = 'Local File';
+            });
+        }
+
+        // 可选：页面加载时尝试自动播放一个已有的默认音频文件
+        // 若要启用，请把你的音频文件放入项目（例如放在 picture/ 目录）并把 DEFAULT_TRACK 改为相对路径
+        const DEFAULT_TRACK = 'picture/街角(street corner)_爱给网_aigei_com.mp3'; // <- 修改为你的文件名或留空关闭自动播放
+
+        window.addEventListener('load', () => {
+            if (!DEFAULT_TRACK) return;
+            // 尝试把默认文件设为音源并播放（注意：浏览器可能基于自动播放策略阻止播放）
+            audio.src = DEFAULT_TRACK;
+            audio.load();
+            audio.play().then(() => {
+                const titleEl = document.querySelector('.song-title');
+                const artistEl = document.querySelector('.song-artist');
+                if (titleEl) titleEl.textContent = DEFAULT_TRACK.split('/').pop();
+                if (artistEl) artistEl.textContent = 'Default';
+            }).catch(() => {
+                // 自动播放被阻止或资源不可用，保留静默失败，用户可手动点击播放
+            });
+        });
+
+        // 如果加载失败（路径不存在或资源错误），可以监听 error 并清理状态
+        audio.addEventListener('error', () => {
+            // 清理 src 防止重复错误
+            // audio.src = '';
         });
 
         // 粒子动画
